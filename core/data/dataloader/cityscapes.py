@@ -37,11 +37,28 @@ class CitySegmentation(SegmentationDataset):
     BASE_DIR = 'cityscapes'
     NUM_CLASS = 19
 
-    def __init__(self, root='../datasets/citys', split='train', mode=None, transform=None, **kwargs):
+    def __init__(self, root='/scratch/lfeng/seg_data/citys', split='train', mode=None, transform=None, use_citys=False, use_gta=True, **kwargs):
         super(CitySegmentation, self).__init__(root, split, mode, transform, **kwargs)
         # self.root = os.path.join(root, self.BASE_DIR)
         assert os.path.exists(self.root), "Please setup the dataset using ../datasets/cityscapes.py"
-        self.images, self.mask_paths = _get_city_pairs(self.root, self.split)
+        self.images, self.mask_paths = [], []
+
+        if self.mode == 'train':
+            if use_citys:
+                images, mask_paths = _get_city_pairs(self.root, self.split)
+                self.images += images
+                self.mask_paths += mask_paths
+            if use_gta:
+                gta_root = self.root.replace('citys', 'gta5')
+                self.gta_images, self.gta_mask_paths = _get_gta_pairs(gta_root)
+                self.images += self.gta_images
+                self.mask_paths += self.gta_mask_paths
+        else:
+            images, mask_paths = _get_city_pairs(self.root, self.split)
+            self.images += images
+            self.mask_paths += mask_paths
+
+
         assert (len(self.images) == len(self.mask_paths))
         if len(self.images) == 0:
             raise RuntimeError("Found 0 images in subfolders of:" + root + "\n")
@@ -52,7 +69,7 @@ class CitySegmentation(SegmentationDataset):
                               2, 3, 4, -1, -1, -1,
                               5, -1, 6, 7, 8, 9,
                               10, 11, 12, 13, 14, 15,
-                              -1, -1, 16, 17, 18])
+                              -1, -1, 16, 17, 18,-1])
         self._mapping = np.array(range(-1, len(self._key) - 1)).astype('int32')
 
     def _class_to_index(self, mask):
@@ -93,6 +110,29 @@ class CitySegmentation(SegmentationDataset):
     @property
     def pred_offset(self):
         return 0
+
+def _get_gta_pairs(folder):
+    def get_path_pairs(img_folder, mask_folder):
+        img_paths = []
+        mask_paths = []
+        for root, _, files in os.walk(img_folder):
+            for filename in files:
+                if filename.endswith('.png'):
+                    imgpath = os.path.join(root, filename)
+                    maskname = imgpath.replace('images', 'labels')
+                    if os.path.isfile(imgpath) and os.path.isfile(maskname):
+                        img_paths.append(imgpath)
+                        mask_paths.append(maskname)
+                    else:
+                        print('cannot find the mask or image:', imgpath, maskname)
+        print('Found {} images in the folder {}'.format(len(img_paths), img_folder))
+        return img_paths, mask_paths
+
+
+    img_folder = os.path.join(folder, 'images/')
+    mask_folder = os.path.join(folder, 'labels/' )
+    img_paths, mask_paths = get_path_pairs(img_folder, mask_folder)
+    return img_paths, mask_paths
 
 
 def _get_city_pairs(folder, split='train'):
